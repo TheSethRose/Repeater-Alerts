@@ -69,6 +69,116 @@ A real-time HAM radio repeater monitoring system that captures live audio stream
 - **Disaster Response**: Monitor relief communications during emergencies
 - **Interoperability**: Bridge between different communication systems
 
+## 🚀 Quick Start
+
+### Automated Setup (Recommended)
+
+```bash
+git clone https://github.com/TheSethRose/Repeater-Alerts.git
+cd Repeater-Alerts
+chmod +x setup.sh
+./setup.sh
+```
+
+### Manual Setup
+
+```bash
+git clone https://github.com/TheSethRose/Repeater-Alerts.git
+cd Repeater-Alerts
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Configuration
+
+1. Copy the example environment file:
+```bash
+cp .env.example .env
+```
+
+2. Edit `.env` to set your default feed ID:
+```bash
+# Default Broadcastify Feed ID to monitor
+BROADCASTIFY_FEED_ID=20213
+```
+
+3. Common feed IDs for reference:
+   - **Plano Repeater**: 31880
+   - **Sherman Repeater**: 20213
+
+## 📻 Usage
+
+### Basic Alert Monitoring
+
+```bash
+# Activate environment
+source venv/bin/activate
+
+# Start monitoring default repeater (from .env)
+python transcriber.py
+
+# Monitor specific repeater feed
+python transcriber.py 31880
+
+# Show help
+python transcriber.py --help
+```
+
+### Finding Feed IDs
+1. Visit [Broadcastify.com](https://www.broadcastify.com)
+2. Search for your local repeater or emergency services
+3. The feed ID is in the URL: `broadcastify.com/listen/feed/XXXXX`
+4. Use that number: `python transcriber.py XXXXX` or set in `.env`
+
+### Continuous Operation
+The system is designed for 24/7 operation:
+- **Automatic Recovery**: Handles feed outages and network issues
+- **Resource Efficient**: Only processes when speech is detected  
+- **Clean Shutdown**: Stop anytime with `Ctrl+C`
+
+## ⚙️ Configuration
+
+### Environment Variables (.env)
+
+The system uses environment variables for configuration. Copy `.env.example` to `.env` and customize:
+
+```bash
+# Default feed to monitor
+BROADCASTIFY_FEED_ID=20213
+
+# Optional browser settings
+CHROME_HEADLESS=true
+CHROME_USER_AGENT="Mozilla/5.0 (compatible; RepeaterAlerts/1.0)"
+
+# Optional audio processing settings
+CHUNK_DURATION=2.0
+BUFFER_OVERLAP=0.5
+SAMPLE_RATE=16000
+```
+
+### Audio Processing Parameters
+
+You can fine-tune audio processing in `audio_processor.py`:
+
+```python
+# Voice Activity Detection sensitivity
+VoiceActivityDetector(
+    energy_threshold=0.01,      # Speech detection sensitivity
+    spectral_threshold=0.5,     # Frequency analysis threshold  
+    min_speech_duration=0.5     # Minimum speech duration (seconds)
+)
+
+# Audio chunk processing
+AudioProcessor(
+    chunk_duration=2.0,         # Process every 2 seconds
+    buffer_duration=0.5,        # 0.5-second overlap for accuracy
+    sample_rate=16000,          # Audio sample rate (16kHz)
+    max_speech_duration=30.0,   # Max single message duration
+    silence_threshold=4.0       # Silence duration to end message
+)
+```
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.

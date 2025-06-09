@@ -9,7 +9,9 @@ common in emergency radio feeds.
 import time
 import signal
 import sys
+import os
 from typing import Optional, Dict, Any, List
+from dotenv import load_dotenv
 from stream_extractor import StreamExtractor
 from audio_processor import AudioProcessor, StreamURLError
 from transcription_model import TranscriptionModel
@@ -268,19 +270,30 @@ def main():
     """Main entry point for the transcriber application."""
     import sys
     
+    # Load environment variables from .env file
+    load_dotenv()
+    
     # Plano Repeater: 31880
     # Sherman Repeater: 20213
 
-    # Default feed ID
-    feed_id = "20213"
+    # Get default feed ID from environment variable, fallback to Sherman Repeater
+    default_feed_id = os.getenv("BROADCASTIFY_FEED_ID", "20213")
+    feed_id = default_feed_id
     
     # Parse command line arguments
     if len(sys.argv) > 1:
         if sys.argv[1] in ['-h', '--help']:
             print("Usage: python transcriber.py [feed_id] [--legacy]")
-            print("  feed_id: Broadcastify feed ID (default: 31880)")
+            print("  feed_id: Broadcastify feed ID (default: from .env or 20213)")
             print("  --legacy: Use legacy mode with fixed 30-second chunks")
             print("  --vad: Use voice activity detection mode (default)")
+            print("\nExamples:")
+            print("  python transcriber.py              # Use default feed from .env")
+            print("  python transcriber.py 31880        # Monitor Plano Repeater")
+            print("  python transcriber.py 20213        # Monitor Sherman Repeater")
+            print("\nConfiguration:")
+            print("  Set BROADCASTIFY_FEED_ID in .env file to change default feed")
+            print("  Copy .env.example to .env and customize your settings")
             return
         
         # Check for mode flags
