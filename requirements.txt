@@ -1,0 +1,8 @@
+requests==2.31.0
+selenium==4.15.0
+nemo_toolkit[asr]==2.2.0
+webdriver-manager==4.0.1
+torch>=2.0.0
+torchaudio>=2.0.0
+librosa==0.10.1
+soundfile==0.12.1
