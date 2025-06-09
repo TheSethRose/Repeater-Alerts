@@ -7,9 +7,11 @@ common in emergency radio feeds.
 """
 
 import time
+import signal
+import sys
 from typing import Optional, Dict, Any, List
 from stream_extractor import StreamExtractor
-from audio_processor import AudioProcessor
+from audio_processor import AudioProcessor, StreamURLError
 from transcription_model import TranscriptionModel
 
 
@@ -30,8 +32,13 @@ class BroadcastifyTranscriber:
         """
         self.feed_id = feed_id
         self.is_running = False
+        self._shutdown_requested = False
         
         print(f"🚀 Initializing BroadcastifyTranscriber for feed {feed_id}")
+        
+        # Set up signal handlers for graceful shutdown
+        signal.signal(signal.SIGINT, self._signalHandler)
+        signal.signal(signal.SIGTERM, self._signalHandler)
         
         # Initialize components
         self.stream_extractor = StreamExtractor(feed_id)
@@ -46,6 +53,12 @@ class BroadcastifyTranscriber:
         self.transcription_model = TranscriptionModel()
         
         print("✅ All components initialized successfully!")
+    
+    def _signalHandler(self, signum: int, frame) -> None:
+        """Handle shutdown signals gracefully."""
+        print(f"\n🛑 Received signal {signum}, initiating graceful shutdown...")
+        self._shutdown_requested = True
+        self.is_running = False
     
     def _printTranscription(self, 
                           transcription: str, 
@@ -70,50 +83,112 @@ class BroadcastifyTranscriber:
         
         Uses voice activity detection to process only audio segments
         containing speech, making it efficient for HAM radio feeds
-        with long periods of silence.
+        with long periods of silence. Includes automatic reconnection
+        for 24/7 operation that only stops on Ctrl+C.
         """
         print("🚀 Starting continuous transcription with VAD...")
+        print("🔄 24/7 operation with intelligent reconnection enabled")
+        print("📡 Network issues: 10s → 5min exponential backoff")
+        print("📻 Feed outages: 1min → 30min exponential backoff")
         print("❌ Press Ctrl+C to stop\n")
         
-        # Extract stream information once
-        print("🔍 Getting stream information...")
-        stream_url, feed_name = self.stream_extractor.extractStreamUrl()
-        
-        if not stream_url or not feed_name:
-            print("❌ Failed to get stream URL or feed name")
-            return
-        
-        print(f"✅ Stream ready! Starting real-time transcription with speech accumulation...")
-        print("📋 Complete messages will be transcribed as single units")
         self.is_running = True
-        
         message_count = 0
         
-        try:
-            # Stream complete speech messages with voice activity detection
-            for complete_message in self.audio_processor.streamAudioChunks(stream_url):
-                if not self.is_running:
-                    break
+        # Reconnection delay management
+        base_reconnect_delay = 10       # Start with 10 seconds for network issues
+        feed_outage_delay = 60         # Start with 1 minute for feed outages (404s)
+        max_network_delay = 300        # Max 5 minutes for network issues
+        max_feed_outage_delay = 1800   # Max 30 minutes for feed outages
+        
+        current_network_delay = base_reconnect_delay
+        current_feed_outage_delay = feed_outage_delay
+        consecutive_feed_errors = 0
+        
+        # Main 24/7 loop - only exits on Ctrl+C
+        while self.is_running:
+            try:
+                # Extract stream information for each connection attempt
+                print("🔍 Getting stream information...")
+                stream_url, feed_name = self.stream_extractor.extractStreamUrl()
                 
-                message_count += 1
+                if not stream_url or not feed_name:
+                    print("❌ Failed to get stream URL or feed name")
+                    if self.is_running:
+                        print(f"🔄 Retrying in {current_network_delay} seconds...")
+                        time.sleep(current_network_delay)
+                        current_network_delay = min(current_network_delay * 1.5, max_network_delay)
+                    continue
                 
-                # Transcribe the complete speech message
-                transcription, word_timestamps = self.transcription_model.transcribeAudio(complete_message)
+                print(f"✅ Stream ready! Starting real-time transcription with speech accumulation...")
+                print("📋 Complete messages will be transcribed as single units")
                 
-                if transcription and len(transcription.strip()) > 0:
-                    self._printTranscription(transcription, feed_name, word_timestamps)
-                else:
-                    print("⚠️ No transcription returned")
+                # Reset network delay on successful stream info retrieval
+                current_network_delay = base_reconnect_delay
                 
-        except KeyboardInterrupt:
-            print("\n🛑 Stopping transcription...")
-            self.is_running = False
-        except Exception as e:
-            print(f"❌ Error in transcription loop: {e}")
-            import traceback
-            print(f"🔍 Full error trace: {traceback.format_exc()}")
-        finally:
-            self.stop()
+                # Stream complete speech messages with voice activity detection
+                for complete_message in self.audio_processor.streamAudioChunks(stream_url):
+                    if not self.is_running:
+                        break
+                    
+                    message_count += 1
+                    
+                    # Transcribe the complete speech message
+                    transcription, word_timestamps = self.transcription_model.transcribeAudio(complete_message)
+                    
+                    if transcription and len(transcription.strip()) > 0:
+                        self._printTranscription(transcription, feed_name, word_timestamps)
+                        # Reset feed error count on successful transcription
+                        consecutive_feed_errors = 0
+                        current_feed_outage_delay = feed_outage_delay
+                    else:
+                        print("⚠️ No transcription returned (continuing to listen...)")
+                
+                # If the generator exits normally, restart it
+                if self.is_running:
+                    print(f"🔄 Stream disconnected, reconnecting in {current_network_delay} seconds...")
+                    time.sleep(current_network_delay)
+                    current_network_delay = min(current_network_delay * 1.2, max_network_delay)
+                    
+            except KeyboardInterrupt:
+                print("\n🛑 Stopping transcription...")
+                self.is_running = False
+                break
+            except StreamURLError as e:
+                # Handle feed outages (404, 503, etc.) with longer delays
+                consecutive_feed_errors += 1
+                print(f"❌ Feed outage detected: {e}")
+                print(f"🔍 Feed has been unavailable for {consecutive_feed_errors} consecutive attempts")
+                
+                if self.is_running:
+                    if consecutive_feed_errors <= 3:
+                        print(f"🔄 Feed may be temporarily down, retrying in {current_feed_outage_delay} seconds...")
+                        print(f"   📊 Attempt #{consecutive_feed_errors} - Using feed outage backoff")
+                    else:
+                        minutes = current_feed_outage_delay // 60
+                        seconds = current_feed_outage_delay % 60
+                        if minutes > 0:
+                            time_str = f"{minutes}m {seconds}s" if seconds > 0 else f"{minutes}m"
+                        else:
+                            time_str = f"{seconds}s"
+                        print(f"📻 Feed appears to be offline, will keep checking every {time_str}...")
+                        print("🔄 Many radio feeds go offline overnight or during maintenance")
+                        print(f"   📊 Attempt #{consecutive_feed_errors} - Extended backoff active")
+                    
+                    time.sleep(current_feed_outage_delay)
+                    # Increase delay for feed outages more aggressively
+                    current_feed_outage_delay = min(current_feed_outage_delay * 1.5, max_feed_outage_delay)
+            except Exception as e:
+                print(f"❌ Error in transcription loop: {e}")
+                import traceback
+                print(f"🔍 Full error trace: {traceback.format_exc()}")
+                if self.is_running:
+                    print(f"🔄 Restarting in {current_network_delay} seconds...")
+                    time.sleep(current_network_delay)
+                    current_network_delay = min(current_network_delay * 1.5, max_network_delay)
+        
+        # Clean shutdown
+        self.stop()
     
     def runLegacyMode(self) -> None:
         """
@@ -193,8 +268,11 @@ def main():
     """Main entry point for the transcriber application."""
     import sys
     
+    # Plano Repeater: 31880
+    # Sherman Repeater: 20213
+
     # Default feed ID
-    feed_id = "31880"
+    feed_id = "20213"
     
     # Parse command line arguments
     if len(sys.argv) > 1:

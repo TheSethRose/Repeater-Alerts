@@ -1,4 +1,8 @@
-# Br## Features
+# Broadcastify Transcriber with Voice Activity Detection
+
+A real-time HAM radio and emergency scanner transcription tool using NVIDIA Parakeet TDT and intelligent voice activity detection to efficiently monitor Broadcastify feeds.
+
+## Features
 
 - **🎙️ Voice Activity Detection (VAD)**: Automatically detects speech and skips silent periods
 - **📋 Speech Accumulation**: Groups continuous speech into complete messages for better transcription
@@ -7,29 +11,17 @@
 - **⏰ Word-Level Timestamps**: Precise timing information for each transcribed word
 - **🔧 Modular Architecture**: Separate components for maintainability and testing
 - **🌐 Automated Stream Extraction**: Headless browser operation via Selenium
-- **🔬 Intelligent Analysis**: Energy and spectral analysis for robust speech detectiony Transcriber with Voice Activity Detection
-
-A real-time HAM radio and emergency scanner transcription tool using NVIDIA Parakeet TDT and intelligent voice activity detection to efficiently monitor Broadcastify feeds.
-
-## Features
-
-- **🎙️ Voice Activity Detection (VAD)**: Automatically detects speech and skips silent periods
-- **⚡ Real-Time Processing**: 2-second chunks with immediate transcription when speech is detected
-- **🧠 High-Quality Transcription**: NVIDIA Parakeet TDT 0.6B V2 model (6.05% WER vs 10-15% for Whisper)
-- **⏰ Word-Level Timestamps**: Precise timing information for each transcribed word
-- **🔧 Modular Architecture**: Separate components for maintainability and testing
-- **🌐 Automated Stream Extraction**: Headless browser operation via Selenium
-- **� Intelligent Analysis**: Energy and spectral analysis for robust speech detection
+- **🔄 Intelligent Reconnection**: Automatic reconnection with exponential backoff for feed outages
+- **🔬 Intelligent Analysis**: Energy and spectral analysis for robust speech detection
 
 ## Architecture
 
-The application is split into focused modules:
+The application is built with a modular architecture:
 
-- **`transcriber.py`** - Main orchestrator and entry point
-- **`stream_extractor.py`** - Broadcastify URL extraction via Selenium
-- **`audio_processor.py`** - Real-time audio streaming and VAD
-- **`transcription_model.py`** - NVIDIA Parakeet model management
-- **`test_transcriber.py`** - Comparison testing tool
+- **`transcriber.py`** - Main orchestrator and CLI entry point
+- **`stream_extractor.py`** - Broadcastify URL extraction via Selenium WebDriver
+- **`audio_processor.py`** - Real-time audio streaming, VAD, and speech accumulation
+- **`transcription_model.py`** - NVIDIA Parakeet model management and inference
 
 ## Voice Activity Detection & Speech Accumulation
 
@@ -41,15 +33,25 @@ The system intelligently handles HAM radio communication patterns:
 - **Duration Filtering**: Minimum speech duration requirements
 - **Configurable Thresholds**: Adjustable sensitivity for different environments
 
-### Speech Accumulation
+### Speech Accumulation & Intelligent Reconnection
+
+**Speech Accumulation**: Combines continuous speech chunks into complete messages for better context and transcription quality:
 - **Message Grouping**: Combines continuous speech chunks into complete messages
 - **Intelligent Boundaries**: Uses silence detection to determine message endings
 - **Flexible Duration**: Handles short confirmations to long weather announcements
 - **Complete Transcriptions**: Ensures full spoken messages aren't fragmented
 
+**Intelligent Reconnection**: Automatically handles network issues and feed outages with smart backoff:
+- Network issues: 10s → 5min exponential backoff
+- Feed outages: 1min → 30min exponential backoff  
+- Continues indefinitely until manually stopped with Ctrl+C
+
+See [`docs/RECONNECTION_GUIDE.md`](docs/RECONNECTION_GUIDE.md) for detailed information.
+
 ## Key Improvements
 
 - **Complete Message Capture**: Speech accumulation ensures full announcements aren't fragmented
+- **Robust Reconnection**: Intelligent handling of feed outages and network issues
 - **Lower latency**: 2-3 seconds from speech start to transcription (vs 30+ seconds legacy)
 - **Resource efficiency**: Only processes audio containing speech
 - **Better accuracy**: 6.05% WER vs 10-15% with Whisper models
@@ -86,20 +88,14 @@ pip install -r requirements.txt
 # Activate environment
 source venv/bin/activate
 
-# Default VAD mode (recommended)
+# Default VAD mode with Sherman Repeater (20213)
 python transcriber.py
 
-# Specific feed ID  
+# Specific feed ID (e.g., Plano Repeater)
 python transcriber.py 31880
 
 # Legacy mode (30-second fixed chunks)
 python transcriber.py --legacy
-
-# Compare modes
-python test_transcriber.py
-
-# Check system status
-python status_check.py
 
 # Get help
 python transcriber.py --help

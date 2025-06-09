@@ -23,6 +23,11 @@ from typing import Optional, Tuple, Generator
 from collections import deque
 
 
+class StreamURLError(Exception):
+    """Exception raised when stream URL becomes invalid and needs re-extraction."""
+    pass
+
+
 class VoiceActivityDetector:
     """Voice Activity Detection using energy-based and spectral methods."""
     
@@ -149,6 +154,7 @@ class AudioProcessor:
     def streamAudioChunks(self, stream_url: str) -> Generator[np.ndarray, None, None]:
         """
         Stream audio in real-time chunks with voice activity detection and speech accumulation.
+        Includes robust automatic reconnection for 24/7 operation.
         
         Args:
             stream_url: Direct URL to audio stream
@@ -161,69 +167,136 @@ class AudioProcessor:
         
         headers = self._createHeaders()
         self.is_streaming = True
+        reconnect_delay = 5  # Start with 5 second delay
+        max_reconnect_delay = 120  # Maximum delay of 2 minutes
+        connection_attempts = 0
+        max_consecutive_failures = 10
+        last_successful_connection = time.time()
         
-        try:
-            response = requests.get(stream_url, stream=True, timeout=10, headers=headers)
-            response.raise_for_status()
-            
-            print(f"✅ Connected! Response status: {response.status_code}")
-            
-            audio_data = io.BytesIO()
-            chunk_size = 1024
-            bytes_collected = 0
-            last_process_time = time.time()
-            
-            print(f"📡 Streaming audio data...")
-            
-            for chunk in response.iter_content(chunk_size=chunk_size):
-                if not self.is_streaming:
-                    print("🛑 Streaming stopped by user")
-                    break
-                    
-                if chunk:
-                    audio_data.write(chunk)
-                    bytes_collected += len(chunk)
-                    
-                    current_time = time.time()
-                    
-                    # Process audio every chunk_duration seconds
-                    if current_time - last_process_time >= self.chunk_duration:
-                        audio_chunk = self._processAudioBuffer(audio_data)
+        while self.is_streaming:
+            try:
+                connection_attempts += 1
+                print(f"🔗 Connection attempt #{connection_attempts}")
+                
+                # Use longer timeout for initial connection
+                response = requests.get(stream_url, stream=True, timeout=30, headers=headers)
+                response.raise_for_status()
+                
+                print(f"✅ Connected! Response status: {response.status_code}")
+                print(f"📡 Content-Type: {response.headers.get('content-type', 'unknown')}")
+                
+                # Reset counters on successful connection
+                reconnect_delay = 5
+                connection_attempts = 0
+                last_successful_connection = time.time()
+                
+                audio_data = io.BytesIO()
+                chunk_size = 8192  # Increased chunk size for better streaming
+                bytes_collected = 0
+                last_process_time = time.time()
+                last_data_time = time.time()
+                
+                print(f"📡 Streaming audio data...")
+                
+                for chunk in response.iter_content(chunk_size=chunk_size):
+                    if not self.is_streaming:
+                        print("🛑 Streaming stopped by user")
+                        return
                         
-                        if audio_chunk is not None:
-                            # Check for speech activity in this chunk
-                            has_speech = self.vad.detectSpeech(audio_chunk)
-                            
-                            # Handle speech accumulation logic
-                            complete_message = self._handleSpeechAccumulation(audio_chunk, has_speech, current_time)
-                            
-                            # Yield complete speech message if ready
-                            if complete_message is not None:
-                                print(f"📝 Speech message ready ({len(complete_message)/self.sample_rate:.1f}s)")
-                                yield complete_message
+                    if chunk:
+                        audio_data.write(chunk)
+                        bytes_collected += len(chunk)
+                        last_data_time = time.time()
                         
-                        # Reset for next chunk with overlap
-                        overlap_bytes = int(bytes_collected * (self.buffer_duration / self.chunk_duration))
-                        audio_data.seek(max(0, bytes_collected - overlap_bytes))
-                        remaining_data = audio_data.read()
-                        audio_data = io.BytesIO()
-                        audio_data.write(remaining_data)
-                        bytes_collected = len(remaining_data)
-                        last_process_time = current_time
-                    
-        except requests.exceptions.RequestException as e:
-            print(f"❌ Network error during streaming: {e}")
-        except Exception as e:
-            print(f"❌ Error during audio streaming: {e}")
-        finally:
-            # Finalize any remaining speech message before stopping
-            if self.is_in_speech and self.speech_segments:
-                print("🏁 Finalizing speech...")
-                final_message = self._finalizeSpeechMessage()
-                if final_message is not None:
-                    yield final_message
+                        current_time = time.time()
+                        
+                        # Process audio every chunk_duration seconds
+                        if current_time - last_process_time >= self.chunk_duration:
+                            audio_chunk = self._processAudioBuffer(audio_data)
+                            
+                            if audio_chunk is not None:
+                                # Check for speech activity in this chunk
+                                has_speech = self.vad.detectSpeech(audio_chunk)
+                                
+                                # Handle speech accumulation logic
+                                complete_message = self._handleSpeechAccumulation(audio_chunk, has_speech, current_time)
+                                
+                                # Yield complete speech message if ready
+                                if complete_message is not None:
+                                    print(f"📝 Speech message ready ({len(complete_message)/self.sample_rate:.1f}s)")
+                                    yield complete_message
+                            
+                            # Reset for next chunk with overlap
+                            overlap_bytes = int(bytes_collected * (self.buffer_duration / self.chunk_duration))
+                            audio_data.seek(max(0, bytes_collected - overlap_bytes))
+                            remaining_data = audio_data.read()
+                            audio_data = io.BytesIO()
+                            audio_data.write(remaining_data)
+                            bytes_collected = len(remaining_data)
+                            last_process_time = current_time
+                    else:
+                        # Check for stream timeout (no data received)
+                        current_time = time.time()
+                        if current_time - last_data_time > 60:  # 60 seconds without data
+                            print("⏰ Stream timeout - no data received for 60 seconds")
+                            raise requests.exceptions.Timeout("Stream timeout")
+                        
+            except KeyboardInterrupt:
+                print("\n🛑 Stopping audio streaming due to user interrupt...")
+                self.is_streaming = False
+                return
+            except requests.exceptions.Timeout as e:
+                print(f"⏰ Timeout error during streaming: {e}")
+                if self.is_streaming:
+                    self._handleReconnection("timeout", reconnect_delay, connection_attempts, max_consecutive_failures)
+                    reconnect_delay = min(reconnect_delay * 1.5, max_reconnect_delay)
+                continue
+            except requests.exceptions.ConnectionError as e:
+                print(f"� Connection error during streaming: {e}")
+                if self.is_streaming:
+                    self._handleReconnection("connection", reconnect_delay, connection_attempts, max_consecutive_failures)
+                    reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
+                continue
+            except requests.exceptions.HTTPError as e:
+                print(f"🌐 HTTP error during streaming: {e}")
+                # HTTP errors might indicate the stream URL is invalid
+                if e.response.status_code in [404, 403, 410]:
+                    print(f"💥 Stream URL appears to be invalid (HTTP {e.response.status_code})")
+                    # Signal that stream URL needs to be re-extracted
+                    raise StreamURLError(f"Invalid stream URL: HTTP {e.response.status_code}")
+                if self.is_streaming:
+                    self._handleReconnection("http", reconnect_delay, connection_attempts, max_consecutive_failures)
+                    reconnect_delay = min(reconnect_delay * 1.8, max_reconnect_delay)
+                continue
+            except requests.exceptions.RequestException as e:
+                print(f"❌ Network error during streaming: {e}")
+                if self.is_streaming:
+                    self._handleReconnection("network", reconnect_delay, connection_attempts, max_consecutive_failures)
+                    reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
+                continue
+            except Exception as e:
+                print(f"❌ Unexpected error during audio streaming: {e}")
+                import traceback
+                print(f"🔍 Error details: {traceback.format_exc()}")
+                if self.is_streaming:
+                    self._handleReconnection("unexpected", reconnect_delay, connection_attempts, max_consecutive_failures)
+                    reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
+                continue
             
-            self.is_streaming = False
+            # If we reach here, the stream ended normally, try to reconnect
+            if self.is_streaming:
+                print(f"🔗 Stream ended normally, reconnecting in {reconnect_delay} seconds...")
+                time.sleep(reconnect_delay)
+                reconnect_delay = min(reconnect_delay * 1.5, max_reconnect_delay)
+        
+        # Finalize any remaining speech message before stopping
+        if self.is_in_speech and self.speech_segments:
+            print("🏁 Finalizing speech...")
+            final_message = self._finalizeSpeechMessage()
+            if final_message is not None:
+                yield final_message
+        
+        self.is_streaming = False
     
     def _processAudioBuffer(self, audio_data: io.BytesIO) -> Optional[np.ndarray]:
         """
@@ -391,3 +464,23 @@ class AudioProcessor:
             self.consecutive_silence_count = 0
             self.speech_chunk_count = 0
             return None
+
+    def _handleReconnection(self, error_type: str, reconnect_delay: float, 
+                          connection_attempts: int, max_consecutive_failures: int) -> None:
+        """
+        Handle reconnection logic with intelligent backoff and failure detection.
+        
+        Args:
+            error_type: Type of error that occurred
+            reconnect_delay: Current reconnection delay in seconds (float)
+            connection_attempts: Number of consecutive connection attempts
+            max_consecutive_failures: Maximum failures before extended delay
+        """
+        if connection_attempts >= max_consecutive_failures:
+            extended_delay = min(reconnect_delay * 3, 300)  # Max 5 minutes
+            print(f"🚨 {max_consecutive_failures} consecutive failures ({error_type})")
+            print(f"🔄 Extended delay: waiting {extended_delay} seconds before retry...")
+            time.sleep(extended_delay)
+        else:
+            print(f"🔄 Reconnecting in {reconnect_delay} seconds... (attempt #{connection_attempts})")
+            time.sleep(reconnect_delay)

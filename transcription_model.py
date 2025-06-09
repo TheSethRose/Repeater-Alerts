@@ -93,6 +93,7 @@ class TranscriptionModel:
                 
                 if output and len(output) > 0:
                     transcription = output[0].text.strip()
+                    print(f"🔍 Raw ASR output: '{transcription}' (length: {len(transcription)})")
                     
                     # Get word-level timestamps if available
                     word_timestamps = None
@@ -110,6 +111,7 @@ class TranscriptionModel:
                     
                     return transcription, word_timestamps
                 else:
+                    print("🔍 ASR model returned empty output or no results")
                     return None, None
                     
             finally:
