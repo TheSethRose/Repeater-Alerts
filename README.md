@@ -1,281 +1,109 @@
-# Broadcastify Transcriber with Voice Activity Detection
+# Repeater Alerts - Real-Time HAM Radio Alert Monitoring
 
-A real-time HAM radio and emergency scanner transcription tool using NVIDIA Parakeet TDT and intelligent voice activity detection to efficiently monitor Broadcastify feeds.
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Features
+A real-time HAM radio repeater monitoring system that captures live audio streams from Broadcastify feeds and transcribes them to detect emergency alerts and important communications. Using advanced voice activity detection and NVIDIA's Parakeet TDT model, this system provides 24/7 monitoring of amateur radio repeaters for emergency preparedness and situational awareness.
 
-- **🎙️ Voice Activity Detection (VAD)**: Automatically detects speech and skips silent periods
-- **📋 Speech Accumulation**: Groups continuous speech into complete messages for better transcription
-- **⚡ Real-Time Processing**: 2-second chunks with immediate processing when speech is detected
-- **🧠 High-Quality Transcription**: NVIDIA Parakeet TDT 0.6B V2 model (6.05% WER vs 10-15% for Whisper)
-- **⏰ Word-Level Timestamps**: Precise timing information for each transcribed word
-- **🔧 Modular Architecture**: Separate components for maintainability and testing
-- **🌐 Automated Stream Extraction**: Headless browser operation via Selenium
-- **🔄 Intelligent Reconnection**: Automatic reconnection with exponential backoff for feed outages
-- **🔬 Intelligent Analysis**: Energy and spectral analysis for robust speech detection
-
-## Architecture
-
-The application is built with a modular architecture:
-
-- **`transcriber.py`** - Main orchestrator and CLI entry point
-- **`stream_extractor.py`** - Broadcastify URL extraction via Selenium WebDriver
-- **`audio_processor.py`** - Real-time audio streaming, VAD, and speech accumulation
-- **`transcription_model.py`** - NVIDIA Parakeet model management and inference
-
-## Voice Activity Detection & Speech Accumulation
-
-The system intelligently handles HAM radio communication patterns:
-
-### Voice Activity Detection (VAD)
-- **Energy Analysis**: Monitors audio energy levels for voice activity
-- **Spectral Analysis**: Analyzes frequency content typical of human speech  
-- **Duration Filtering**: Minimum speech duration requirements
-- **Configurable Thresholds**: Adjustable sensitivity for different environments
-
-### Speech Accumulation & Intelligent Reconnection
-
-**Speech Accumulation**: Combines continuous speech chunks into complete messages for better context and transcription quality:
-- **Message Grouping**: Combines continuous speech chunks into complete messages
-- **Intelligent Boundaries**: Uses silence detection to determine message endings
-- **Flexible Duration**: Handles short confirmations to long weather announcements
-- **Complete Transcriptions**: Ensures full spoken messages aren't fragmented
-
-**Intelligent Reconnection**: Automatically handles network issues and feed outages with smart backoff:
-- Network issues: 10s → 5min exponential backoff
-- Feed outages: 1min → 30min exponential backoff  
-- Continues indefinitely until manually stopped with Ctrl+C
-
-See [`docs/RECONNECTION_GUIDE.md`](docs/RECONNECTION_GUIDE.md) for detailed information.
-
-## Key Improvements
-
-- **Complete Message Capture**: Speech accumulation ensures full announcements aren't fragmented
-- **Robust Reconnection**: Intelligent handling of feed outages and network issues
-- **Lower latency**: 2-3 seconds from speech start to transcription (vs 30+ seconds legacy)
-- **Resource efficiency**: Only processes audio containing speech
-- **Better accuracy**: 6.05% WER vs 10-15% with Whisper models
-- **Word-level timestamps**: Precise timing for each word
-- **Faster inference**: Real-Time Factor of 3380x
-
-## Prerequisites
-
-- Python 3.8+
-- Google Chrome browser (for Selenium)
-- Internet connection for streaming and model download
-- ~2GB RAM minimum for model loading
-
-## Quick Setup
-
-### Automated Setup (Recommended)
-
-```bash
-chmod +x setup.sh
-./setup.sh
-```
-
-### Manual Setup
-
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-## Usage
-
-```bash
-# Activate environment
-source venv/bin/activate
-
-# Default VAD mode with Sherman Repeater (20213)
-python transcriber.py
-
-# Specific feed ID (e.g., Plano Repeater)
-python transcriber.py 31880
-
-# Legacy mode (30-second fixed chunks)
-python transcriber.py --legacy
-
-# Get help
-python transcriber.py --help
-```
-
-Stop with `Ctrl+C`
-
-## Configuration
-
-### VAD Sensitivity (audio_processor.py)
-
-```python
-VoiceActivityDetector(
-    energy_threshold=0.01,      # Audio energy sensitivity
-    spectral_threshold=0.5,     # Frequency content threshold  
-    min_speech_duration=0.5     # Minimum speech duration (seconds)
-)
-```
-
-### Audio Processing & Speech Accumulation (audio_processor.py)
-
-```python
-AudioProcessor(
-    chunk_duration=2.0,         # Process every 2 seconds
-    buffer_duration=0.5,        # 0.5-second overlap
-    sample_rate=16000,          # Audio sample rate
-    max_speech_duration=30.0,   # Max duration for accumulated speech
-    silence_threshold=2.0       # Silence duration to end message
-)
-```
-
-## Sample Output
+## 📱 Sample Alert Output
 
 ```
-🚀 Initializing BroadcastifyTranscriber for feed 31880
-🔄 Loading NVIDIA Parakeet TDT model: nvidia/parakeet-tdt-0.6b-v2...
-✅ Parakeet model loaded successfully!
-✅ All components initialized successfully!
-
-🚀 Starting continuous transcription with VAD...
-🌐 Loading Broadcastify feed 31880...
-✅ Audio element found!
-📻 Feed Name: Sacramento County Sheriff
-🎵 Starting real-time audio streaming...
-
-🎙️ Speech detected! Processing for transcription
-✅ Speech #1 transcribed successfully!
-
-🎙️ [2024-06-08 15:30:42] Sacramento County Sheriff (Feed 31880):
-📝 TRANSCRIPTION: Unit 23, respond to a 211 in progress at Oak and Main.
-⏰ Word-level timestamps (12 words):
-    🔹 [0.1s-0.4s] Unit
-    🔹 [0.5s-0.9s] 23,
-    🔹 [1.0s-1.4s] respond
-    🔹 [1.5s-1.7s] to
-    🔹 [1.8s-1.9s] a
-    🔹 [2.0s-2.4s] 211
-    🔹 [2.5s-2.7s] in
-    🔹 [2.8s-3.2s] progress
-    🔹 [3.3s-3.5s] at
-    🔹 [3.6s-3.8s] Oak
-    🔹 [3.9s-4.1s] and
-    🔹 [4.2s-4.5s] Main.
-================================================================================
-```
-
-## Performance Improvements
-
-### VAD Mode vs Legacy Mode
-
-**VAD Mode with Speech Accumulation (Recommended)**:
-- ✅ **Complete message capture**: Groups continuous speech into full messages
-- ✅ **Real-time responsiveness**: 2-second processing chunks with immediate speech detection
-- ✅ **Efficient resource usage**: Only processes audio containing speech
-- ✅ **Perfect for HAM radio**: Handles both short confirmations and long announcements
-- ✅ **Lower latency**: ~2-3 seconds from speech start to transcription
-- ✅ **Adaptive processing**: Automatically adjusts to speech patterns and durations
-
-**Legacy Mode**:
-- ⚠️ **Fixed 30-second chunks**: Always waits 30 seconds regardless of content
-- ⚠️ **Higher latency**: Up to 30+ seconds from speech to transcription
-- ⚠️ **Resource waste**: Processes long periods of silence
-- ⚠️ **Poor for sporadic speech**: Not optimized for emergency radio patterns
-
-### Expected Performance
-
-- **Model loading**: 10-30 seconds (first run only)
-- **Speech detection**: <100ms per chunk
-- **Transcription**: 1-3 seconds per speech segment
-- **Total latency**: 2-5 seconds from speech start to text output
-- **Memory usage**: ~2-4GB during operation
-- **CPU usage**: Moderate during speech processing, minimal during silence
-
-## Sample Output
-
-```
-🚀 Initializing BroadcastifyTranscriber for feed 31880
+🚀 Initializing BroadcastifyTranscriber for feed 20213
 ⚙️ AudioProcessor Configuration:
    📏 Chunk duration: 2.0s
-   🔄 Buffer overlap: 0.5s
+   🔄 Buffer overlap: 0.5s  
    🎵 Sample rate: 16000Hz
-   🔇 VAD energy threshold: 0.01
-🔄 Loading NVIDIA Parakeet TDT model: nvidia/parakeet-tdt-0.6b-v2...
+🔄 Loading NVIDIA Parakeet TDT model...
 ✅ Parakeet model loaded successfully!
 ✅ All components initialized successfully!
 
-🚀 Starting continuous transcription with VAD...
-🌐 Loading Broadcastify feed 31880...
+📊 Transcriber Status:
+   📡 Feed ID: 20213 (Sherman Repeater)
+   🧠 Model loaded: True
+   🎵 Model: nvidia/parakeet-tdt-0.6b-v2
+
+🔄 Starting in VAD mode (voice activity detection)...
+🔄 24/7 operation with intelligent reconnection enabled
+📡 Network issues: 10s → 5min exponential backoff
+📻 Feed outages: 1min → 30min exponential backoff
+❌ Press Ctrl+C to stop
+
+🌐 Loading Broadcastify feed 20213...
 ✅ Audio element found!
-📻 Feed Name: Sacramento County Sheriff
-🎵 Starting real-time audio streaming...
-📡 Streaming audio data with real-time VAD...
+🎯 Raw stream URL: https://broadcastify.cdnstream1.com/20213
+📄 Page title: Sherman Texas Amateur Radio Emergency Service
+🔗 Stream URL found: https://broadcastify.cdnstream1.com/20213
+📻 Feed Name: Sherman ARES Repeater
+✅ Stream ready! Starting real-time transcription with speech accumulation...
 
-🔍 VAD Analysis: energy=0.003 spectral=0.421 duration=2.0s → SILENCE
-🔍 VAD Analysis: energy=0.045 spectral=0.678 duration=2.0s → SPEECH
-🎙️ Speech detected! Yielding audio chunk for transcription
+🎙️ [2025-06-08 15:30:42] Sherman ARES Repeater (Feed 20213):
+📝 Emergency net activation. All stations standby for priority traffic.
+================================================================================
 
-🔄 Processing speech chunk #1...
-🧠 Running Parakeet transcription...
-✅ Transcription successful!
+🎙️ [2025-06-08 15:31:15] Sherman ARES Repeater (Feed 20213):
+📝 Severe thunderstorm warning issued for Grayson County until 4 PM.
+================================================================================
 
-🎙️ [2025-06-08 15:30:42] Sacramento County Sheriff (Feed 31880):
-📝 TRANSCRIPTION: Unit 23, respond to a 211 in progress at Oak and Main.
-⏰ Word-level timestamps (11 words):
-    🔹 [0.1s-0.4s] Unit
-    🔹 [0.5s-0.9s] 23,
-    🔹 [1.0s-1.4s] respond
-    🔹 [1.5s-1.7s] to
-    🔹 [1.8s-1.9s] a
-    🔹 [2.0s-2.4s] 211
-    🔹 [2.5s-2.7s] in
-    🔹 [2.8s-3.2s] progress
-    🔹 [3.3s-3.5s] at
-    🔹 [3.6s-3.8s] Oak
-    🔹 [3.9s-4.1s] and
-    🔹 [4.2s-4.5s] Main.
+🎙️ [2025-06-08 15:32:03] Sherman ARES Repeater (Feed 20213):
+📝 Unit 7 reporting power lines down on Highway 82 near mile marker 15.
 ================================================================================
 ```
 
-## How It Works
+## 🎯 Use Cases
 
-1. **Model Loading**: Downloads and loads NVIDIA's Parakeet TDT 0.6B model (~600MB on first run)
-2. **Stream Extraction**: Uses Selenium to extract direct audio stream URL from Broadcastify
-3. **Audio Processing**: Captures 30-second chunks and resamples to 16kHz mono
-4. **ASR Transcription**: Processes audio with Parakeet TDT for high-accuracy speech recognition
-5. **Timestamp Extraction**: Provides word-level timing information
-6. **Output Display**: Shows timestamped transcriptions with enhanced punctuation/capitalization
+### Emergency Preparedness
+- **Weather Alerts**: Monitor severe weather communications and warnings
+- **Emergency Traffic**: Catch emergency activations and priority communications  
+- **Net Operations**: Track emergency nets and disaster communications
+- **Situational Awareness**: Stay informed when away from radio equipment
 
-## Model Performance
+### HAM Radio Operations
+- **Repeater Monitoring**: Track activity on local repeater networks
+- **Event Support**: Monitor communications during races, festivals, and public events
+- **Training**: Record and analyze emergency exercises and drills
+- **Documentation**: Maintain logs of important communications
 
-- **Word Error Rate**: 6.05% average (significantly better than Whisper's ~10-15%)
-- **Inference Speed**: RTFx 3380 with batch processing
-- **Language**: Optimized for English speech recognition
-- **Audio Quality**: Robust to noise and various audio conditions
+### Emergency Services Coordination
+- **ARES/RACES**: Monitor amateur radio emergency service communications
+- **Storm Spotting**: Track severe weather reports and spotter activations
+- **Disaster Response**: Monitor relief communications during emergencies
+- **Interoperability**: Bridge between different communication systems
 
-## Troubleshooting
+## 🤝 Contributing
 
-- **Chrome not found**: Install Google Chrome browser
-- **Import errors**: Make sure virtual environment is activated and dependencies are installed
-- **NeMo toolkit issues**: Ensure PyTorch is compatible with your system
-- **CUDA errors**: GPU acceleration is optional; CPU inference will work but be slower
-- **Stream URL not found**: The feed might be offline or the page structure changed
-- **Audio capture fails**: Check internet connection and feed availability
-- **Model download fails**: Ensure stable internet connection for initial 600MB download
+Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
 
-## Dependencies
+### Development Setup
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature-name`
+3. Make your changes and test thoroughly
+4. Commit your changes: `git commit -am 'Add some feature'`
+5. Push to the branch: `git push origin feature-name`
+6. Submit a pull request
 
-- `requests`: HTTP library for audio streaming
-- `selenium`: Web automation for stream URL extraction
-- `nemo_toolkit[asr]`: NVIDIA NeMo toolkit with ASR capabilities
-- `torch` & `torchaudio`: PyTorch framework for deep learning
-- `librosa`: Audio processing library
-- `soundfile`: Audio file I/O operations
-- `webdriver-manager`: Automatic ChromeDriver management
+### Code Style
+- Follow PEP 8 for Python code
+- Add docstrings to new functions and classes
+- Include tests for new features
+- Update documentation as needed
 
-## Notes
+## 📄 License
 
-- **First run**: Downloads Parakeet TDT model (~600MB) - ensure stable internet
-- **Performance**: GPU acceleration recommended but not required
-- **Audio quality**: 16kHz mono audio provides best results
-- **Licensing**: Model available under CC-BY-4.0 license for commercial/non-commercial use
-- **Temporary files**: Audio files are created and cleaned up automatically
-- **Feed availability**: Some feeds may require authentication or have geographic restrictions
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- **NVIDIA NeMo Team** for the excellent Parakeet TDT ASR model
+- **Broadcastify.com** for providing public access to radio feeds
+- **HAM Radio Community** for emergency communications and public service
+
+## 📞 Support
+
+If you encounter any issues or have questions:
+1. Check the [RECONNECTION_GUIDE.md](docs/RECONNECTION_GUIDE.md) for troubleshooting
+2. Search existing [GitHub Issues](https://github.com/TheSethRose/Repeater-Alerts/issues)
+3. Open a new issue with detailed information about your problem
+
+---
+
+**⚠️ Legal Notice**: This tool is intended for monitoring publicly available radio communications only. Always comply with local laws and regulations regarding radio monitoring. Respect privacy and emergency services protocols.

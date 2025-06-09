@@ -31,14 +31,15 @@ ENV/
 env.bak/
 venv.bak/
 
-# IDE
+# IDE & Editors
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+*.code-workspace
 
-# OS
+# OS Files
 .DS_Store
 .DS_Store?
 ._*
@@ -46,30 +47,78 @@ venv.bak/
 .Trashes
 ehthumbs.db
 Thumbs.db
+.AppleDouble
+.LSOverride
+Icon?
+.DocumentRevisions-V100
+.fseventsd
+.TemporaryItems
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
 
-# Audio files (temporary)
+# Windows
+Thumbs.db:encryptable
+ehthumbs_vista.db
+*.tmp
+*.temp
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# Audio files (temporary processing)
 *.wav
 *.mp3
 *.m4a
+*.aac
+*.ogg
+*.flac
 *.tmp
+audio_temp/
+temp_audio/
+recordings/
 
-# Logs
+# Logs & Output
 *.log
 logs/
+*.out
+transcription_logs/
+alerts_log/
 
 # Browser automation
 geckodriver.log
 chromedriver.log
+chrome_debug.log
+selenium_logs/
 
-# Model cache
+# Model cache (NVIDIA NeMo)
 .cache/
 models/
+.nemo/
+nemo_cache/
+model_cache/
 
-# Test outputs
+# Test outputs & Coverage
 test_results/
 coverage/
 .coverage
+.coverage.*
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
 .pytest_cache/
+htmlcov/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -79,3 +128,16 @@ coverage/
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Temporary files
+temp/
+tmp/
+
+# GitHub development files
+.github/instructions/
+.github/prompts/
